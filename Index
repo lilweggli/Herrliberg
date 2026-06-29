@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Herrliberg Kompass</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0f0f1a;
+      color: white;
+      font-family: -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      text-align: center;
+      padding: 20px;
+    }
+    h1 { font-size: 1.4rem; margin-bottom: 6px; color: #aaa; }
+    #distance { font-size: 1.1rem; margin-bottom: 40px; color: #FFD700; }
+    #arrow-container {
+      width: 200px;
+      height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 40px;
+    }
+    #arrow {
+      font-size: 120px;
+      display: inline-block;
+      transition: transform 0.3s ease;
+    }
+    #status { font-size: 0.85rem; color: #888; margin-bottom: 30px; min-height: 40px; }
+    #start-btn {
+      background: #FFD700;
+      color: #000;
+      border: none;
+      padding: 16px 36px;
+      font-size: 1.1rem;
+      font-weight: bold;
+      border-radius: 50px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>📍 Herrliberg</h1>
+  <div id="distance">--</div>
+  <div id="arrow-container">
+    <span id="arrow">↑</span>
+  </div>
+  <div id="status">Tippe den Knopf um zu starten</div>
+  <button id="start-btn" onclick="start()">Starten</button>
+
+  <script>
+    const TARGET = { lat: 47.2969, lng: 8.5906 };
+    let currentHeading = null;
+    let currentPos = null;
+
+    function toRad(d) { return d * Math.PI / 180; }
+    function toDeg(r) { return r * 180 / Math.PI; }
+
+    function bearing(from, to) {
+      const dLng = toRad(to.lng - from.lng);
+      const lat1 = toRad(from.lat);
+      const lat2 = toRad(to.lat);
+      const y = Math.sin(dLng) * Math.cos(lat2);
+      const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+      return (toDeg(Math.atan2(y, x)) + 360) % 360;
+    }
+
+    function distance(from, to) {
+      const R = 6371;
+      const dLat = toRad(to.lat - from.lat);
+      const dLng = toRad(to.lng - from.lng);
+      const a = Math.sin(dLat/2)**2 + Math.cos(toRad(from.lat)) * Math.cos(toRad(to.lat)) * Math.sin(dLng/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    function updateArrow() {
+      if (currentHeading === null || currentPos === null) return;
+      const b = bearing(currentPos, TARGET);
+      const angle = (b - currentHeading + 360) % 360;
+      document.getElementById('arrow').style.transform = `rotate(${angle}deg)`;
+      const d = distance(currentPos, TARGET);
+      document.getElementById('distance').textContent = d < 1
+        ? `${Math.round(d * 1000)} m entfernt`
+        : `${d.toFixed(1)} km entfernt`;
+    }
+
+    function start() {
+      document.getElementById('start-btn').style.display = 'none';
+      document.getElementById('status').textContent = 'GPS wird geladen...';
+
+      // GPS
+      navigator.geolocation.watchPosition(pos => {
+        currentPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        document.getElementById('status').textContent = 'GPS OK – Kompass läuft...';
+        updateArrow();
+      }, err => {
+        document.getElementById('status').textContent = 'GPS Fehler: ' + err.message;
+      }, { enableHighAccuracy: true });
+
+      // Kompass (iOS braucht requestPermission)
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission().then(state => {
+          if (state === 'granted') {
+            window.addEventListener('deviceorientation', onOrientation);
+          } else {
+            document.getElementById('status').textContent = 'Kompass-Erlaubnis verweigert';
+          }
+        });
+      } else {
+        window.addEventListener('deviceorientation', onOrientation);
+      }
+    }
+
+    function onOrientation(e) {
+      if (e.webkitCompassHeading !== undefined) {
+        currentHeading = e.webkitCompassHeading; // iOS
+      } else if (e.alpha !== null) {
+        currentHeading = (360 - e.alpha) % 360; // Android
+      }
+      updateArrow();
+    }
+  </script>
+</body>
+</html>
